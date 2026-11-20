@@ -35,6 +35,11 @@ export function getAllGeminiApiKeys() {
     keys.push(envKey2.trim());
   }
 
+  const envKey3 = import.meta.env.VITE_GEMINI_API_KEY_3;
+  if (envKey3 && envKey3.trim().length > 0) {
+    keys.push(envKey3.trim());
+  }
+
   const defaultKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (defaultKey && defaultKey.trim().length > 0) {
     keys.push(defaultKey.trim());

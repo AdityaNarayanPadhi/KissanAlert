@@ -2,13 +2,15 @@ import { useState, useEffect, useRef } from 'react';
 import { X, CheckCircle2, Camera, ImagePlus, AlertCircle, Droplets } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { getLangForAI } from '../utils/i18n';
+import { getLangForAI, getTranslation } from '../utils/i18n';
 import { syncUserData } from '../utils/userDataSync';
 import { compressImage } from '../utils/imageCompressor';
 import { hasAnyGeminiApiKey, executeWithGeminiRotation } from '../utils/geminiKey';
+import ExportShare from '../components/ExportShare';
 
 export default function CameraUpload() {
   const navigate = useNavigate();
+  const t = getTranslation;
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -116,7 +118,9 @@ IMPORTANT RULES:
 - For 'waterStress', carefully examine the image for signs of water deficiency or excess. If it's an animal, check for dehydration signs.
 - For 'irrigationAdvice', provide actionable water management advice specific to the identified crop/animal.
       
-CRITICAL INSTRUCTION: Translate the values of 'identity', 'diagnosis', 'severity', 'affectedArea', 'possibleConditions', 'immediateCare', 'urgency', 'actionPlan', 'waterStress', and 'irrigationAdvice' into ${userLang}. Keep JSON keys strictly in English.`;
+CRITICAL INSTRUCTION:
+Translate all diagnostic values ('identity', 'diagnosis', 'severity', 'affectedArea', 'possibleConditions', 'immediateCare', 'urgency', 'actionPlan', 'waterStress', and 'irrigationAdvice') strictly into ${userLang}.
+If user language is Odia (ଓଡ଼ିଆ), ALL these text values MUST be strictly written in authentic, fluent Odia script (ଓଡ଼ିଆ ଲିପି / ଅକ୍ଷର) with proper agricultural and veterinary terms and actionable step-by-step remedies for farmers. Keep JSON keys strictly in English.`;
       
       const imagePart = { inlineData: { data: cleanBase64, mimeType: imageMimeType } };
 
@@ -214,7 +218,7 @@ CRITICAL INSTRUCTION: Translate the values of 'identity', 'diagnosis', 'severity
           
           {analyzing && (
             <span className="text-aqua font-display text-sm uppercase tracking-[0.3em] bg-ocean/80 backdrop-blur-xl px-6 py-3 rounded-xl border border-aqua/50 shadow-lg animate-pulse">
-              Analyzing...
+              {t("Analyzing...")}
             </span>
           )}
           <div className="w-12"></div>
@@ -247,8 +251,8 @@ CRITICAL INSTRUCTION: Translate the values of 'identity', 'diagnosis', 'severity
             {!hasPermission && !analyzing && !imagePreview && (
               <div className="z-20 text-center px-6">
                 <AlertCircle className="w-12 h-12 text-alert mx-auto mb-4" />
-                <p className="font-display text-white text-xl uppercase tracking-widest mb-2">Camera Access Denied</p>
-                <p className="font-body text-white/70 text-sm">Please allow camera permissions or use the upload button below.</p>
+                <p className="font-display text-white text-xl uppercase tracking-widest mb-2">{t("Camera Access Denied")}</p>
+                <p className="font-body text-white/70 text-sm">{t("Please allow camera permissions or use the upload button below.")}</p>
               </div>
             )}
 
@@ -270,7 +274,7 @@ CRITICAL INSTRUCTION: Translate the values of 'identity', 'diagnosis', 'severity
            <div className="mt-8 flex justify-center">
              <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleFileUpload} />
              <button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-3 bg-white/10 backdrop-blur-xl border border-white/20 px-8 py-5 rounded-xl text-white font-display text-sm uppercase tracking-widest hover:bg-white/20 active:scale-95 transition-all shadow-lg">
-                <ImagePlus className="w-5 h-5" /> Upload from Gallery
+                <ImagePlus className="w-5 h-5" /> {t("Upload from Gallery")}
              </button>
            </div>
         )}
@@ -289,33 +293,33 @@ CRITICAL INSTRUCTION: Translate the values of 'identity', 'diagnosis', 'severity
                   {result.healthPercentage || 0}%
                 </div>
                 <div className="overflow-hidden min-w-0">
-                  <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest truncate">Identified {result.type}</p>
+                  <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest truncate">{t("Identified")} {t(result.type)}</p>
                   <p className="font-display text-charcoalDark dark:text-white text-2xl uppercase leading-tight truncate mt-1">{result.identity}</p>
                 </div>
               </div>
               
               {/* Diagnosis + Severity + Urgency */}
               <div className="bg-white dark:bg-white/5 p-5 rounded-xl border border-charcoalDark/10 dark:border-white/10 shadow-sm mb-4 border-l-4" style={{ borderLeftColor: result.severity === 'Healthy' ? '#16A34A' : '#DC2626' }}>
-                 <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest mb-2">Diagnosis</p>
+                 <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest mb-2">{t("Diagnosis")}</p>
                  <p className="font-body font-bold text-charcoalDark dark:text-white text-base sm:text-lg">{result.diagnosis}</p>
                  <div className="flex flex-wrap gap-2 mt-4">
                    <div className={`font-display text-[10px] px-3 py-1.5 rounded-lg inline-block uppercase tracking-widest border ${result.severity === 'Critical' ? 'bg-alert/10 text-alert border-alert/20' : result.severity === 'Healthy' ? 'bg-leaf/10 text-leaf border-leaf/20' : 'bg-charcoalDark/5 dark:bg-white/10 text-charcoalDark dark:text-white border-charcoalDark/10 dark:border-white/20'}`}>
-                     Severity: {result.severity}
+                     {t("Severity")}: {t(result.severity)}
                    </div>
                    {result.urgency && (
                      <div className={`font-display text-[10px] px-3 py-1.5 rounded-lg inline-block uppercase tracking-widest border ${result.urgency === 'Immediate' ? 'bg-alert/10 text-alert border-alert/20' : result.urgency === 'Within 24h' ? 'bg-harvest/10 text-harvest border-harvest/20' : 'bg-leaf/10 text-leaf border-leaf/20'}`}>
-                       🕐 {result.urgency}
+                       🕐 {t(result.urgency)}
                      </div>
                    )}
                  </div>
               </div>
 
-              {/* Water Stress & Irrigation Advice (NEW) */}
+              {/* Water Stress & Irrigation Advice */}
               {result.waterStress && (
                 <div className="glass-water p-5 rounded-xl mb-4 border-l-4 border-l-aqua">
                   <div className="flex items-center gap-2 mb-2">
                     <Droplets className="w-4 h-4 text-aqua" />
-                    <p className="font-display text-ocean dark:text-aqua text-[10px] uppercase tracking-widest">Water Stress: {result.waterStress}</p>
+                    <p className="font-display text-ocean dark:text-aqua text-[10px] uppercase tracking-widest">{t("Water Stress")}: {result.waterStress}</p>
                   </div>
                   {result.irrigationAdvice && (
                     <p className="font-body font-medium text-sm sm:text-base text-charcoalDark/90 dark:text-white/90 leading-relaxed">{result.irrigationAdvice}</p>
@@ -326,7 +330,7 @@ CRITICAL INSTRUCTION: Translate the values of 'identity', 'diagnosis', 'severity
               {/* Affected Area */}
               {result.affectedArea && (
                 <div className="bg-white dark:bg-white/5 p-5 rounded-xl border border-charcoalDark/10 dark:border-white/10 shadow-sm mb-4">
-                  <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest mb-2">Affected Area</p>
+                  <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest mb-2">{t("Affected Area")}</p>
                   <p className="font-body font-medium text-charcoalDark dark:text-white text-sm sm:text-base">{result.affectedArea}</p>
                 </div>
               )}
@@ -334,7 +338,7 @@ CRITICAL INSTRUCTION: Translate the values of 'identity', 'diagnosis', 'severity
               {/* Possible Conditions */}
               {result.possibleConditions && result.possibleConditions.length > 0 && (
                 <div className="bg-white dark:bg-white/5 p-5 rounded-xl border border-charcoalDark/10 dark:border-white/10 shadow-sm mb-4">
-                  <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest mb-4">Possible Conditions</p>
+                  <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest mb-4">{t("Possible Conditions")}</p>
                   <div className="space-y-3">
                     {result.possibleConditions.map((cond, i) => (
                       <div key={i} className="flex items-start gap-3">
@@ -349,21 +353,26 @@ CRITICAL INSTRUCTION: Translate the values of 'identity', 'diagnosis', 'severity
               {/* Immediate Care */}
               {result.immediateCare && (
                 <div className="bg-harvest/5 dark:bg-harvest/10 p-5 rounded-xl border border-harvest/20 shadow-sm mb-4 border-l-4 border-l-harvest">
-                  <p className="font-display text-harvest text-[10px] uppercase tracking-widest mb-2">⚡ Immediate Care</p>
+                  <p className="font-display text-harvest text-[10px] uppercase tracking-widest mb-2">⚡ {t("Immediate Care")}</p>
                   <p className="font-body font-medium text-sm sm:text-base text-charcoalDark/90 dark:text-white/90 leading-relaxed">{result.immediateCare}</p>
                 </div>
               )}
               
               {/* Action Plan */}
               <div className="bg-white dark:bg-white/5 p-5 rounded-xl border border-charcoalDark/10 dark:border-white/10 shadow-sm mb-6 border-t-4 border-t-aqua">
-                <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest mb-4">Precaution & Action Plan</p>
+                <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest mb-4">{t("Precaution & Action Plan")}</p>
                 <div className="font-body font-medium text-sm sm:text-base text-charcoalDark/90 dark:text-white/90 leading-relaxed whitespace-pre-wrap">
                   {result.actionPlan}
                 </div>
               </div>
               
+              {/* Direct Export/Share Report */}
+              <div className="mb-4">
+                <ExportShare scan={result} />
+              </div>
+
               <button onClick={handleExit} className="water-gradient text-white w-full py-4 rounded-xl font-display text-sm uppercase tracking-widest shadow-lg active:scale-[0.98] hover:opacity-90 transition-all flex justify-center items-center gap-3">
-                <CheckCircle2 className="w-5 h-5" /> Done
+                <CheckCircle2 className="w-5 h-5" /> {t("Done")}
               </button>
             </div>
           </div>
