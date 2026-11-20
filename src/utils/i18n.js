@@ -382,7 +382,9 @@ const translations = {
 // Map to track in-progress background translations to avoid duplicates
 let isTranslating = {};
 
-const translateWithGemini = async (text, userLang, apiKey) => {
+import { getAllGeminiApiKeys, GEMINI_MODELS } from './geminiKey';
+
+const translateWithGemini = async (text, userLang) => {
   const cacheKey = `kisanalert_translations_${userLang}`;
   const cache = JSON.parse(localStorage.getItem(cacheKey) || '{}');
   if (cache[text]) return;
@@ -395,29 +397,34 @@ const translateWithGemini = async (text, userLang, apiKey) => {
     const prompt = `You are a professional agricultural translator. Translate the following short English user interface text into the Indian language "${userLang}". Keep the tone professional, friendly, and natural for Indian farmers. Do not write any explanations, code, or quotes. Just output the direct translation.
 English text: "${text}"`;
 
-    const modelNames = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const keys = getAllGeminiApiKeys();
+    if (keys.length === 0) return;
+
     let res = null;
     let success = false;
 
-    for (const modelName of modelNames) {
-      try {
-        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }]
-          })
-        });
-        if (res.ok) {
-          success = true;
-          break;
+    for (const apiKey of keys) {
+      for (const modelName of GEMINI_MODELS) {
+        try {
+          res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }]
+            })
+          });
+          if (res.ok) {
+            success = true;
+            break;
+          }
+        } catch (err) {
+          console.warn(`Translation fetch failed for ${modelName} on key:`, err);
         }
-      } catch (err) {
-        console.warn(`Translation fetch failed for ${modelName}:`, err);
       }
+      if (success) break;
     }
     
-    if (res.ok) {
+    if (res && res.ok) {
       const resData = await res.json();
       const translatedText = resData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
       if (translatedText) {
@@ -436,8 +443,6 @@ English text: "${text}"`;
   }
 };
 
-import { getGeminiApiKey } from './geminiKey';
-
 export const getTranslation = (enString) => {
   if (!enString) return '';
   const userLang = localStorage.getItem('SMART_AG_LANG') || 'English';
@@ -452,11 +457,8 @@ export const getTranslation = (enString) => {
   const cache = JSON.parse(localStorage.getItem(cacheKey) || '{}');
   if (cache[enString]) return cache[enString];
 
-  // 3. Fallback to Gemini if key exists
-  const apiKey = getGeminiApiKey();
-  if (apiKey && apiKey.trim().length > 5) {
-    translateWithGemini(enString, userLang, apiKey);
-  }
+  // 3. Fallback to Gemini with automatic key rotation
+  translateWithGemini(enString, userLang);
 
   return enString;
 };

@@ -5,7 +5,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getLangForAI } from '../utils/i18n';
 import { syncUserData } from '../utils/userDataSync';
 import { compressImage } from '../utils/imageCompressor';
-import { getGeminiApiKey } from '../utils/geminiKey';
+import { hasAnyGeminiApiKey, executeWithGeminiRotation } from '../utils/geminiKey';
 
 export default function CameraUpload() {
   const navigate = useNavigate();
@@ -64,15 +64,14 @@ export default function CameraUpload() {
   const processImageBuffer = async (base64Data, rawDataUrl) => {
     stopCamera();
     
-    const apiKey = getGeminiApiKey();
-    const rawLang = localStorage.getItem('SMART_AG_LANG') || 'English';
-    const userLang = getLangForAI(rawLang);
-
-    if (!apiKey) {
+    if (!hasAnyGeminiApiKey()) {
       alert("Please configure your Gemini API Key in the Settings page or set VITE_GEMINI_API_KEY in .env.");
       navigate('/profile');
       return;
     }
+
+    const rawLang = localStorage.getItem('SMART_AG_LANG') || 'English';
+    const userLang = getLangForAI(rawLang);
 
     setAnalyzing(true);
     
@@ -83,7 +82,6 @@ export default function CameraUpload() {
       const imageMimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
       const cleanBase64 = compressedDataUrl.split(',')[1];
 
-      const genAI = new GoogleGenerativeAI(apiKey);
       const prompt = `Analyze this image. FIRST, determine if the image contains any agricultural subject.
 
 CLASSIFICATION RULES (VERY IMPORTANT):
@@ -122,30 +120,12 @@ CRITICAL INSTRUCTION: Translate the values of 'identity', 'diagnosis', 'severity
       
       const imagePart = { inlineData: { data: cleanBase64, mimeType: imageMimeType } };
 
-      let responseText = "";
-      const modelNames = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
-      let success = false;
-      let lastError = null;
-
-      for (const modelName of modelNames) {
-        try {
-          const model = genAI.getGenerativeModel({ model: modelName });
-          const fetchResult = await model.generateContent([prompt, imagePart]);
-          responseText = fetchResult.response.text();
-          success = true;
-          break;
-        } catch (modelErr) {
-          console.warn(`Model ${modelName} failed:`, modelErr);
-          lastError = modelErr;
-        }
-      }
-
-      if (!success) {
-        if (lastError?.message?.includes('404') || lastError?.status === 404 || lastError?.message?.toLowerCase().includes('key') || lastError?.message?.toLowerCase().includes('fetch')) {
-          localStorage.setItem('GEMINI_KEY_ERROR', 'true');
-        }
-        throw lastError; 
-      }
+      const responseText = await executeWithGeminiRotation(async (key, modelName) => {
+        const genAI = new GoogleGenerativeAI(key);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const fetchResult = await model.generateContent([prompt, imagePart]);
+        return fetchResult.response.text();
+      });
       
       const extractJSON = (text) => {
         const start = text.indexOf('{');

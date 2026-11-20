@@ -2,9 +2,13 @@ import { useState, useEffect } from 'react';
 import { CloudRain, Sun, Wind, Droplets, Thermometer, Eye, Loader2, MapPin, Sparkles, AlertTriangle, CloudSnow, Cloud, CloudSun, CloudDrizzle, Cloudy } from 'lucide-react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getTranslation, getLangForAI } from '../utils/i18n';
-import { getGeminiApiKey } from '../utils/geminiKey';
+import { hasAnyGeminiApiKey, executeWithGeminiRotation } from '../utils/geminiKey';
 
-const INDIAN_API_KEY = import.meta.env.VITE_INDIAN_API_KEY || '';
+const GOOGLE_WEATHER_KEY = import.meta.env.VITE_GOOGLE_WEATHER_API_KEY || '';
+const OPENWEATHER_KEYS = [
+  import.meta.env.VITE_OPENWEATHER_API_KEY_1,
+  import.meta.env.VITE_OPENWEATHER_API_KEY_2,
+].filter(Boolean);
 
 // ─── Weather code → icon mapping (for open-meteo fallback) ───
 const WMO_ICONS = {
@@ -32,19 +36,57 @@ function getWeatherIcon(description) {
   return { icon: Cloud, color: 'text-sage' };
 }
 
-// ─── Normalize weather responses into a common shape ───
-function normalizeIndianAPI(data) {
+// ─── Normalizers ───
+function normalizeOpenWeather(curData, foreData) {
+  const daysMap = {};
+  if (foreData?.list) {
+    foreData.list.forEach(item => {
+      const day = item.dt_txt.split(' ')[0];
+      if (!daysMap[day]) {
+        daysMap[day] = {
+          date: day,
+          dayLabel: new Date(item.dt * 1000).toLocaleDateString('en', { weekday: 'short' }),
+          description: item.weather[0]?.description || 'Clear',
+          maxTemp: Math.round(item.main.temp_max),
+          minTemp: Math.round(item.main.temp_min),
+          rainChance: Math.round((item.pop || 0) * 100)
+        };
+      } else {
+        daysMap[day].maxTemp = Math.max(daysMap[day].maxTemp, Math.round(item.main.temp_max));
+        daysMap[day].minTemp = Math.min(daysMap[day].minTemp, Math.round(item.main.temp_min));
+        daysMap[day].rainChance = Math.max(daysMap[day].rainChance, Math.round((item.pop || 0) * 100));
+      }
+    });
+  }
+
+  const forecast = Object.values(daysMap).slice(0, 7);
+
   return {
-    source: 'IndianAPI',
-    temperature: data?.current?.temperature ?? data?.temperature ?? '--',
-    humidity: data?.current?.humidity ?? data?.humidity ?? '--',
-    windSpeed: data?.current?.wind_speed ?? data?.wind?.speed ?? '--',
-    precipitation: data?.current?.precipitation ?? data?.precipitation ?? '0',
-    description: data?.current?.description ?? data?.weather ?? data?.current?.weather ?? 'Clear',
-    feelsLike: data?.current?.feels_like ?? data?.feels_like ?? null,
-    sunrise: data?.astronomy?.sunrise ?? data?.sun?.sunrise ?? null,
-    sunset: data?.astronomy?.sunset ?? data?.sun?.sunset ?? null,
-    forecast: data?.forecast ?? [],
+    source: 'OpenWeather',
+    temperature: Math.round(curData.main.temp),
+    humidity: curData.main.humidity,
+    windSpeed: Math.round(curData.wind.speed * 3.6), // convert m/s to km/h
+    precipitation: curData.rain ? (curData.rain['1h'] || curData.rain['3h'] || 0) : 0,
+    description: curData.weather[0]?.description ? curData.weather[0].description.charAt(0).toUpperCase() + curData.weather[0].description.slice(1) : 'Clear Sky',
+    feelsLike: Math.round(curData.main.feels_like),
+    sunrise: curData.sys?.sunrise ? new Date(curData.sys.sunrise * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+    sunset: curData.sys?.sunset ? new Date(curData.sys.sunset * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : null,
+    forecast,
+  };
+}
+
+function normalizeGoogleWeather(gData, fallbackForecast = []) {
+  return {
+    source: 'Google Maps Weather',
+    temperature: Math.round(gData.temperature?.degrees ?? 25),
+    humidity: gData.relativeHumidity ?? 50,
+    windSpeed: Math.round(gData.wind?.speed?.value ?? 5),
+    precipitation: gData.precipitation?.qpf?.quantity ?? (gData.precipitation?.probability?.percent ? `${gData.precipitation.probability.percent}%` : 0),
+    description: gData.weatherCondition?.description?.text || 'Clear',
+    feelsLike: Math.round(gData.feelsLikeTemperature?.degrees ?? gData.temperature?.degrees ?? 25),
+    sunrise: null,
+    sunset: null,
+    forecast: fallbackForecast,
   };
 }
 
@@ -88,7 +130,7 @@ export default function Weather() {
   useEffect(() => { fetchWeather(); }, []);
 
   const fetchWeather = async (manualCity) => {
-    // 0. Try loading from cache first
+    // 0. Check cache
     const cachedData = localStorage.getItem('kisanalert_cached_weather');
     const cachedCity = localStorage.getItem('kisanalert_cached_weather_city');
     const cachedTime = localStorage.getItem('kisanalert_cached_weather_time');
@@ -97,7 +139,6 @@ export default function Weather() {
     if (cachedData && cachedCity && cachedTime && !manualCity) {
       const parsedTime = parseInt(cachedTime, 10);
       const now = Date.now();
-      // If cache is less than 30 minutes old
       if (now - parsedTime < 30 * 60 * 1000) {
         setWeather(JSON.parse(cachedData));
         setLocationName(cachedCity);
@@ -135,39 +176,84 @@ export default function Weather() {
 
       setLocationName(city);
 
-      // 2. Try IndianAPI
-      let normalized = null;
-      try {
-        const res = await fetch(`https://weather.indianapi.in/india/weather?city=${encodeURIComponent(city)}`, {
-          headers: { 'X-Api-Key': INDIAN_API_KEY },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          normalized = normalizeIndianAPI(data);
-        } else {
-          console.warn('IndianAPI returned', res.status, '— falling back to Open-Meteo');
+      // If lat/lon missing for manual city, search via Nominatim
+      if (!lat || !lon) {
+        try {
+          const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)},India&format=json&limit=1`, {
+            headers: { 'User-Agent': 'KissanAlert/1.0' }
+          });
+          const geoData = await geoRes.json();
+          if (geoData.length > 0) {
+            lat = parseFloat(geoData[0].lat);
+            lon = parseFloat(geoData[0].lon);
+          } else {
+            lat = 28.6139; lon = 77.2090; // Delhi coordinates
+          }
+        } catch {
+          lat = 28.6139; lon = 77.2090;
         }
-      } catch (e) {
-        console.warn('IndianAPI unavailable:', e.message, '— falling back to Open-Meteo');
       }
 
-      // 3. Fallback: open-meteo (needs lat/lon)
-      if (!normalized) {
-        if (!lat || !lon) {
-          try {
-            const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)},India&format=json&limit=1`, {
-              headers: { 'User-Agent': 'KissanAlert/1.0' }
-            });
-            const geoData = await geoRes.json();
-            if (geoData.length > 0) { lat = geoData[0].lat; lon = geoData[0].lon; }
-            else { lat = 28.6139; lon = 77.2090; } // Delhi fallback
-          } catch { lat = 28.6139; lon = 77.2090; }
+      let normalized = null;
+
+      // 2. Try OpenWeatherMap with Automatic Key Rotation
+      for (let i = 0; i < OPENWEATHER_KEYS.length; i++) {
+        const apiKey = OPENWEATHER_KEYS[i];
+        try {
+          const query = lat && lon ? `lat=${lat}&lon=${lon}` : `q=${encodeURIComponent(city)},IN`;
+          const [curRes, foreRes] = await Promise.all([
+            fetch(`https://api.openweathermap.org/data/2.5/weather?${query}&appid=${apiKey}&units=metric`),
+            fetch(`https://api.openweathermap.org/data/2.5/forecast?${query}&appid=${apiKey}&units=metric`)
+          ]);
+
+          if (curRes.ok && foreRes.ok) {
+            const curData = await curRes.json();
+            const foreData = await foreRes.json();
+            normalized = normalizeOpenWeather(curData, foreData);
+            break;
+          } else {
+            console.warn(`[Weather] OpenWeather key ${i + 1} status ${curRes.status}/${foreRes.status}, rotating to next key...`);
+          }
+        } catch (err) {
+          console.warn(`[Weather] OpenWeather key ${i + 1} failed:`, err.message);
         }
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,weather_code,apparent_temperature&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,uv_index_max&timezone=auto&forecast_days=7`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error('Both weather APIs failed');
-        const data = await res.json();
-        normalized = normalizeOpenMeteo(data);
+      }
+
+      // 3. Try Google Maps Platform Weather API if enabled
+      if (GOOGLE_WEATHER_KEY && lat && lon) {
+        try {
+          const gRes = await fetch(`https://weather.googleapis.com/v1/currentConditions:lookup?location.latitude=${lat}&location.longitude=${lon}&key=${GOOGLE_WEATHER_KEY}`);
+          if (gRes.ok) {
+            const gData = await gRes.json();
+            const fallbackForecast = normalized?.forecast || [];
+            normalized = normalizeGoogleWeather(gData, fallbackForecast);
+          }
+        } catch (err) {
+          console.warn('[Weather] Google Weather call failed:', err.message);
+        }
+      }
+
+      // 4. Resilient Fallback: Open-Meteo 7-day forecast
+      if (!normalized || !normalized.forecast || normalized.forecast.length === 0) {
+        try {
+          const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation,weather_code,apparent_temperature&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,uv_index_max&timezone=auto&forecast_days=7`;
+          const res = await fetch(url);
+          if (res.ok) {
+            const data = await res.json();
+            const meteoData = normalizeOpenMeteo(data);
+            if (!normalized) {
+              normalized = meteoData;
+            } else {
+              normalized.forecast = meteoData.forecast;
+            }
+          }
+        } catch (e) {
+          console.warn('[Weather] Open-Meteo fallback failed:', e.message);
+        }
+      }
+
+      if (!normalized) {
+        throw new Error('All weather API endpoints failed. Please verify your connection.');
       }
 
       setWeather(normalized);
@@ -194,13 +280,14 @@ export default function Weather() {
     }
   };
 
-  // ─── AI Smart Irrigation Advisory ───
+  // ─── AI Smart Irrigation Advisory (with Gemini Key Rotation) ───
   const generateIrrigationAdvice = async () => {
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) { alert('Please configure a Gemini API key in Settings or set VITE_GEMINI_API_KEY in .env.'); return; }
+    if (!hasAnyGeminiApiKey()) {
+      alert('Please configure a Gemini API key in Settings or set VITE_GEMINI_API_KEY in .env.');
+      return;
+    }
     setLoadingIrrigation(true);
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
       const userLang = getLangForAI(localStorage.getItem('SMART_AG_LANG') || 'English');
       const scans = JSON.parse(localStorage.getItem('smartAgHistory') || '[]');
       const recentScans = scans.slice(0, 5).map(s => `${s.identity} - ${s.diagnosis} (${s.severity}, Water Stress: ${s.waterStress || 'Unknown'})`).join('; ');
@@ -235,32 +322,30 @@ Provide a SMART IRRIGATION ADVISORY with:
 Format with clear sections and emojis. Be concise but actionable.
 CRITICAL INSTRUCTION: You MUST write the ENTIRE response (all text, titles, warnings, and schedules) in the language: ${userLang}. Do NOT use English under any circumstances except for standard measurements or units. Translate everything. Keep each section to 2-3 lines max.`;
 
-      const modelNames = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-      let responseText = '';
-      for (const modelName of modelNames) {
-        try {
-          const model = genAI.getGenerativeModel({ model: modelName });
-          const res = await model.generateContent(prompt);
-          responseText = res.response.text();
-          break;
-        } catch (e) { console.warn(`${modelName} failed`, e); }
-      }
+      const responseText = await executeWithGeminiRotation(async (key, modelName) => {
+        const genAI = new GoogleGenerativeAI(key);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const res = await model.generateContent(prompt);
+        return res.response.text();
+      });
+
       setIrrigationAdvice(responseText);
     } catch (err) {
       console.error('Irrigation advice error:', err);
-      alert('Failed to generate irrigation advice.');
+      alert('Failed to generate irrigation advice. Please check your connection and API keys.');
     } finally {
       setLoadingIrrigation(false);
     }
   };
 
-  // ─── AI Smart Alerts ───
+  // ─── AI Smart Alerts (with Gemini Key Rotation) ───
   const generateSmartAlert = async () => {
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) { alert('Please configure a Gemini API key in Settings or set VITE_GEMINI_API_KEY in .env.'); return; }
+    if (!hasAnyGeminiApiKey()) {
+      alert('Please configure a Gemini API key in Settings or set VITE_GEMINI_API_KEY in .env.');
+      return;
+    }
     setLoadingAlert(true);
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
       const userLang = getLangForAI(localStorage.getItem('SMART_AG_LANG') || 'English');
       const scans = JSON.parse(localStorage.getItem('smartAgHistory') || '[]');
       const recentScans = scans.slice(0, 5).map(s => `${s.identity} - ${s.diagnosis} (${s.severity})`).join('; ');
@@ -288,16 +373,13 @@ Be specific to their crops/animals. If no scans, give general seasonal advice.
 Include at least one water management alert.
 CRITICAL INSTRUCTION: You MUST write the ENTIRE response in the language: ${userLang}. Do NOT use English under any circumstances. Translate everything, including any titles and emojis labels. Keep it concise.`;
 
-      const modelNames = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-      let responseText = '';
-      for (const modelName of modelNames) {
-        try {
-          const model = genAI.getGenerativeModel({ model: modelName });
-          const res = await model.generateContent(prompt);
-          responseText = res.response.text();
-          break;
-        } catch (e) { console.warn(`${modelName} failed`, e); }
-      }
+      const responseText = await executeWithGeminiRotation(async (key, modelName) => {
+        const genAI = new GoogleGenerativeAI(key);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const res = await model.generateContent(prompt);
+        return res.response.text();
+      });
+
       setSmartAlert(responseText);
     } catch (err) {
       console.error('Smart alert error:', err);
@@ -340,7 +422,7 @@ CRITICAL INSTRUCTION: You MUST write the ENTIRE response in the language: ${user
           <MapPin className="w-3 h-3 text-sage" />
           <p className="text-sage font-semibold text-xs">{locationName}</p>
           {weather?.source && (
-            <span className="ml-2 text-[8px] font-bold uppercase tracking-widest text-aqua/60 bg-aqua/10 px-2 py-0.5 rounded-full">{weather.source}</span>
+            <span className="ml-2 text-[8px] font-bold uppercase tracking-widest text-aqua/80 bg-aqua/10 px-2 py-0.5 rounded-full border border-aqua/20">{weather.source}</span>
           )}
         </div>
       </header>
@@ -389,7 +471,7 @@ CRITICAL INSTRUCTION: You MUST write the ENTIRE response in the language: ${user
         </div>
       </div>
 
-      {/* 💧 Smart Irrigation Advisory (NEW) */}
+      {/* 💧 Smart Irrigation Advisory */}
       <div className="glass-water rounded-2xl p-6 sm:p-8 mb-4 sm:mb-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-48 h-48 bg-aqua/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
         <div className="relative z-10">
@@ -431,7 +513,7 @@ CRITICAL INSTRUCTION: You MUST write the ENTIRE response in the language: ${user
         </div>
       </div>
 
-      {/* Sunrise / Sunset (IndianAPI only) */}
+      {/* Sunrise / Sunset */}
       {(weather?.sunrise || weather?.sunset) && (
         <div className="grid grid-cols-2 gap-3 mb-4">
           {weather?.sunrise && (
