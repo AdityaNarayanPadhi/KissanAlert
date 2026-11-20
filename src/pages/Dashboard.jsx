@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { TrendingUp, Milk, Weight, Wheat, AlertTriangle, Sparkles, Plus, Trash2, Loader2, Droplets } from 'lucide-react';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getTranslation } from '../utils/i18n';
-import { getGeminiApiKey } from '../utils/geminiKey';
+import { hasAnyGeminiApiKey, executeWithGeminiRotation } from '../utils/geminiKey';
 import CustomSelect from '../components/CustomSelect';
 
 const STORAGE_KEYS = {
@@ -155,8 +155,10 @@ export default function Dashboard() {
 
   // AI Plans
   const getAIPlan = async (type) => {
-    const apiKey = getGeminiApiKey();
-    if (!apiKey) { alert('Please configure a Gemini API key in Settings or set VITE_GEMINI_API_KEY in .env.'); return; }
+    if (!hasAnyGeminiApiKey()) {
+      alert('Please configure a Gemini API key in Settings or set VITE_GEMINI_API_KEY in .env.');
+      return;
+    }
 
     const isLivestock = type === 'feed';
     const isWater = type === 'water';
@@ -165,7 +167,6 @@ export default function Dashboard() {
     else setLoadingFertilizer(true);
 
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
       const userLang = localStorage.getItem('SMART_AG_LANG') || 'English';
 
       let prompt = '';
@@ -217,16 +218,12 @@ export default function Dashboard() {
         Format with clear sections. Respond in ${userLang}.`;
       }
 
-      const modelNames = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-      let responseText = '';
-      for (const modelName of modelNames) {
-        try {
-          const model = genAI.getGenerativeModel({ model: modelName });
-          const res = await model.generateContent(prompt);
-          responseText = res.response.text();
-          break;
-        } catch (e) { console.warn(`${modelName} failed`, e); }
-      }
+      const responseText = await executeWithGeminiRotation(async (key, modelName) => {
+        const genAI = new GoogleGenerativeAI(key);
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const res = await model.generateContent(prompt);
+        return res.response.text();
+      });
 
       if (isWater) setWaterPlan(responseText);
       else if (isLivestock) setFeedPlan(responseText);

@@ -12,12 +12,12 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         runtimeCaching: [
           {
-            // Cache Open-Meteo weather API responses
-            urlPattern: /^https:\/\/api\.open-meteo\.com\/.*/i,
+            // Cache OpenWeather and Open-Meteo weather API responses
+            urlPattern: /^https:\/\/(api\.open-meteo\.com|api\.openweathermap\.org|weather\.googleapis\.com)\/.*/i,
             handler: 'StaleWhileRevalidate',
             options: {
               cacheName: 'weather-api-cache',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 30 }, // 30 min
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 30 }, // 30 min
             },
           },
           {
