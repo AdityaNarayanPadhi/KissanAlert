@@ -1,7 +1,9 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Home, ScanLine, User2, CloudSun, MessageSquare } from 'lucide-react';
+import { getTranslation } from '../utils/i18n';
 
 export default function BottomNav() {
+  const t = getTranslation;
   const location = useLocation();
   const path = location.pathname;
 
@@ -38,7 +40,7 @@ export default function BottomNav() {
             className={`flex flex-col items-center justify-center py-2 transition-all ${isActive ? 'text-white' : 'text-white/40 hover:text-white/70'}`}
           >
             <Icon className="w-5 h-5 sm:w-[22px] sm:h-[22px]" />
-            <span className="font-display text-[9px] sm:text-[10px] mt-1 tracking-widest uppercase leading-none">{item.label}</span>
+            <span className="font-display text-[9px] sm:text-[10px] mt-1 tracking-widest uppercase leading-none">{t(item.label)}</span>
           </Link>
         );
       })}
