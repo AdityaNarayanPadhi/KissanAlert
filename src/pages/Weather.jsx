@@ -4,7 +4,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getTranslation, getLangForAI } from '../utils/i18n';
 import { getGeminiApiKey } from '../utils/geminiKey';
 
-const INDIAN_API_KEY = 'sk-live-53uikf89OPzAFpjJWJMtU84OxsMD4uPEWeqC21dP';
+const INDIAN_API_KEY = import.meta.env.VITE_INDIAN_API_KEY || '';
 
 // ─── Weather code → icon mapping (for open-meteo fallback) ───
 const WMO_ICONS = {

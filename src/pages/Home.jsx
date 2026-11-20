@@ -28,27 +28,40 @@ export default function Home() {
     };
   }, [navigate]);
 
-  const issuesPicked = scans.filter(s => s.severity && s.severity !== 'Healthy').length;
-  const recentInsight = scans.length > 0 ? scans[0].diagnosis : getTranslation("No scans yet");
-
   // Separate health for crops and livestock
   const cropScans = scans.filter(s => s.type === 'Crop');
   const livestockScans = scans.filter(s => s.type === 'Livestock');
 
-  const cropIssues = cropScans.filter(s => s.severity && s.severity !== 'Healthy').length;
-  const livestockIssues = livestockScans.filter(s => s.severity && s.severity !== 'Healthy').length;
+  const issuesPicked = scans.filter(s => s.severity && s.severity !== 'Healthy').length;
+  const recentInsight = scans.length > 0 ? scans[0].diagnosis : getTranslation("No scans yet");
 
-  const cropHealthScore = cropScans.length > 0 ? Math.round(((cropScans.length - cropIssues) / cropScans.length) * 100) : 100;
-  const livestockHealthScore = livestockScans.length > 0 ? Math.round(((livestockScans.length - livestockIssues) / livestockScans.length) * 100) : 100;
+  // Dynamically compute health percentage based on actual uploaded scans
+  const computeHealthScore = (categoryScans) => {
+    if (categoryScans.length === 0) return 100;
+    const total = categoryScans.reduce((sum, s) => {
+      let val = Number(s.healthPercentage);
+      if (isNaN(val) || val <= 0) {
+        if (s.severity === 'Healthy') val = 100;
+        else if (s.severity === 'Critical') val = 30;
+        else val = 65; // Moderate
+      }
+      return sum + Math.min(Math.max(val, 0), 100);
+    }, 0);
+    return Math.round(total / categoryScans.length);
+  };
 
-  const getHealthInfo = (score) => {
+  const cropHealthScore = computeHealthScore(cropScans);
+  const livestockHealthScore = computeHealthScore(livestockScans);
+
+  const getHealthInfo = (score, count) => {
+    if (count === 0) return { status: 'Good', color: 'text-leaf', bg: 'bg-leaf/20', border: 'border-leaf/20' };
     if (score < 50) return { status: 'Critical', color: 'text-alert', bg: 'bg-alert/20', border: 'border-alert/20' };
     if (score < 80) return { status: 'Fair', color: 'text-harvest', bg: 'bg-harvest/20', border: 'border-harvest/20' };
     return { status: 'Good', color: 'text-leaf', bg: 'bg-leaf/20', border: 'border-leaf/20' };
   };
 
-  const cropHealth = getHealthInfo(cropHealthScore);
-  const livestockHealth = getHealthInfo(livestockHealthScore);
+  const cropHealth = getHealthInfo(cropHealthScore, cropScans.length);
+  const livestockHealth = getHealthInfo(livestockHealthScore, livestockScans.length);
 
   const getFilteredScans = () => {
     if (filter === 'Crops') return scans.filter(s => s.type === 'Crop');

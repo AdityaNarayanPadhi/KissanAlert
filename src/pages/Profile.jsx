@@ -83,7 +83,26 @@ export default function Profile() {
 
       <div className="bg-[#f8f9fa] dark:bg-white/5 rounded-xl p-5 sm:p-6 border border-charcoalDark/10 dark:border-white/10 shadow-sm mb-6">
         
-        {/* Personal Info Section */}
+        {/* 1. Primary Language Section (Placed at the very top) */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 bg-aqua/10 dark:bg-aqua/20 rounded-lg flex items-center justify-center text-aqua shrink-0">
+            <Languages className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-display text-charcoalDark dark:text-white text-sm sm:text-base uppercase tracking-wider">{t("Primary Language")}</h3>
+            <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest">App & AI Translations</p>
+          </div>
+        </div>
+
+        <div className="space-y-3 mb-8 relative">
+          <CustomSelect 
+            value={language}
+            onChange={(e) => setLanguage(e.target.value)}
+            options={LANGUAGES.map(lang => ({ value: lang, label: lang }))}
+          />
+        </div>
+
+        {/* 2. Personal Info Section */}
         <div className="flex items-center gap-3 mb-4">
           <div className="w-12 h-12 bg-charcoalDark dark:bg-white rounded-lg flex items-center justify-center text-white dark:text-charcoalDark shrink-0">
             <User2 className="w-5 h-5" />
@@ -104,7 +123,7 @@ export default function Profile() {
           />
         </div>
 
-        {/* Farm & Irrigation Profile Section */}
+        {/* 3. Farm & Irrigation Profile Section */}
         <div className="flex items-center gap-3 mb-4">
           <div className="w-12 h-12 bg-aqua rounded-lg flex items-center justify-center text-white shrink-0">
             <Droplets className="w-5 h-5" />
@@ -145,7 +164,7 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* API Key Section */}
+        {/* 4. API Key Section */}
         <div className="flex items-center gap-3 mb-4">
           <div className="w-12 h-12 bg-charcoalDark rounded-lg flex items-center justify-center text-white shrink-0 animate-pulse-slow">
             <Key className="w-5 h-5 text-aqua" />
@@ -172,31 +191,12 @@ export default function Profile() {
           )}
           {showError && (
             <p className="font-body text-[10px] sm:text-xs text-coralRed font-medium leading-relaxed bg-coralRed/5 p-3 rounded-lg border border-coralRed/20 animate-bounce">
-              * Note: Do NOT use your Firebase App config API key here. It will result in a 404 error. Please generate a dedicated Gemini API key at aistudio.google.com
+              * Note: Please make sure your Gemini API key is valid and has Gemini Pro/Flash access enabled at aistudio.google.com
             </p>
           )}
         </div>
 
-        {/* Language Section */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 bg-aqua/10 dark:bg-aqua/20 rounded-lg flex items-center justify-center text-aqua shrink-0">
-            <Languages className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="font-display text-charcoalDark dark:text-white text-sm sm:text-base uppercase tracking-wider">{t("Primary Language")}</h3>
-            <p className="font-display text-charcoalDark/50 dark:text-white/50 text-[10px] uppercase tracking-widest">App & AI Translations</p>
-          </div>
-        </div>
-
-        <div className="space-y-3 mb-8 relative">
-          <CustomSelect 
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-            options={LANGUAGES.map(lang => ({ value: lang, label: lang }))}
-          />
-        </div>
-
-        {/* Dark Mode Section */}
+        {/* 5. Dark Mode Section */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <div className={`w-12 h-12 rounded-lg flex items-center justify-center transition-colors shrink-0 ${dark ? 'bg-amber-500 text-white animate-pulse-slow' : 'bg-charcoalDark text-white'}`}>
