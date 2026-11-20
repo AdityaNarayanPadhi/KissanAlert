@@ -89,7 +89,24 @@ export default function Dashboard() {
   const livestockScans = scans.filter(s => s.type === 'Livestock');
   const cropScans = scans.filter(s => s.type === 'Crop');
   const criticalAlerts = scans.filter(s => s.severity === 'Critical').length;
-  const avgHealth = scans.length > 0 ? Math.round(scans.reduce((a, s) => a + (s.healthPercentage || 0), 0) / scans.length) : 100;
+  
+  const computeHealthScore = (list) => {
+    if (list.length === 0) return 100;
+    const total = list.reduce((sum, s) => {
+      let val = Number(s.healthPercentage);
+      if (isNaN(val) || val <= 0) {
+        if (s.severity === 'Healthy') val = 100;
+        else if (s.severity === 'Critical') val = 30;
+        else val = 65;
+      }
+      return sum + Math.min(Math.max(val, 0), 100);
+    }, 0);
+    return Math.round(total / list.length);
+  };
+
+  const avgHealth = computeHealthScore(scans);
+  const cropAvgHealth = computeHealthScore(cropScans);
+  const livestockAvgHealth = computeHealthScore(livestockScans);
   const uniqueBreeds = [...new Set(livestockScans.map(s => s.identity))];
   const uniqueCrops = [...new Set(cropScans.map(s => s.identity))];
   const totalWater = waterLog.reduce((sum, w) => sum + w.value, 0);

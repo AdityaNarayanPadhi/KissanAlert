@@ -1,6 +1,17 @@
 import { supabase } from './supabaseClient';
-import { auth } from './firebase';
 import { compressImage } from './imageCompressor';
+
+/**
+ * Returns a persistent unique device ID for local user synchronization.
+ */
+export function getOrCreateUserId() {
+  let id = localStorage.getItem('SMART_AG_USER_ID');
+  if (!id) {
+    id = 'farmer_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
+    localStorage.setItem('SMART_AG_USER_ID', id);
+  }
+  return id;
+}
 
 /**
  * Syncs the local storage data to the Supabase database.
@@ -8,10 +19,7 @@ import { compressImage } from './imageCompressor';
  */
 export async function syncUserData() {
   try {
-    const user = auth.currentUser;
-    if (!user) return;
-
-    const userId = user.uid;
+    const userId = getOrCreateUserId();
     const localHistory = JSON.parse(localStorage.getItem('smartAgHistory') || '[]');
     
     // Compress large base64 scan images on the fly if needed to prevent payload size errors
