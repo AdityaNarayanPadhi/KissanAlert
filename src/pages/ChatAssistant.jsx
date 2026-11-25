@@ -147,10 +147,16 @@ Respond helpfully:`;
 
       const responseText = await executeWithGeminiRotation(async (key, modelName) => {
         const genAI = new GoogleGenerativeAI(key);
-        const model = genAI.getGenerativeModel({ model: modelName });
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            maxOutputTokens: 500,
+            temperature: 0.3,
+          }
+        });
         const res = await model.generateContent(prompt);
         return res.response.text();
-      });
+      }, 7000);
 
       const aiMsg = { role: 'ai', text: responseText, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
       setMessages(prev => [...prev, aiMsg]);

@@ -119,3 +119,4 @@ When someone asks: *"What if the system fails or crashes?"* Explain these three 
 ## 🎓 Summary Words to Close Your Explanation
 
 > *"KissanAlert isn't just a technology project; it's a digital lifeline for farmers. It takes the most advanced Artificial Intelligence in the world and puts it in the hands of the people who grow our food, in the language they speak at home."*
+

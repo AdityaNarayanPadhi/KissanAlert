@@ -78,8 +78,8 @@ export default function CameraUpload() {
     setAnalyzing(true);
     
     try {
-      // Pre-compress image to ensure fast upload and avoid API/network payload size errors
-      const compressedDataUrl = await compressImage(rawDataUrl, 800, 0.7);
+      // Pre-compress image to ensure ultra-fast upload and prevent network timeouts
+      const compressedDataUrl = await compressImage(rawDataUrl, 640, 0.65);
       const mimeMatch = compressedDataUrl.match(/^data:(image\/[a-zA-Z+-]+);base64,/);
       const imageMimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
       const cleanBase64 = compressedDataUrl.split(',')[1];
@@ -126,10 +126,16 @@ If user language is Odia (ଓଡ଼ିଆ), ALL these text values MUST be strict
 
       const responseText = await executeWithGeminiRotation(async (key, modelName) => {
         const genAI = new GoogleGenerativeAI(key);
-        const model = genAI.getGenerativeModel({ model: modelName });
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            maxOutputTokens: 800,
+            temperature: 0.1,
+          }
+        });
         const fetchResult = await model.generateContent([prompt, imagePart]);
         return fetchResult.response.text();
-      });
+      }, 7000);
       
       const extractJSON = (text) => {
         const start = text.indexOf('{');
